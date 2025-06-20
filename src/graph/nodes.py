@@ -248,166 +248,93 @@ def coordinator_node(
 
     return Command(
         update={
-            "locale": locale,
+            "messages": [AIMessage(content=f"Handoff to planner: {research_topic}")],
             "research_topic": research_topic,
-            "resources": configurable.resources,
+            "locale": locale,
         },
         goto=goto,
     )
 
 
 def reporter_node(state: State, config: RunnableConfig):
-    """Reporter node that write a final report."""
-    logger.info("Reporter write final report")
+    """Reporter node to generate the final report."""
+    logger.info("Reporter generating final report.")
     configurable = Configuration.from_runnable_config(config)
-    current_plan = state.get("current_plan")
-    input_ = {
-        "messages": [
-            HumanMessage(
-                f"# Research Requirements\n\n## Task\n\n{current_plan.title}\n\n## Description\n\n{current_plan.thought}"
-            )
-        ],
-        "locale": state.get("locale", "en-US"),
-    }
-    invoke_messages = apply_prompt_template("reporter", input_, configurable)
-    observations = state.get("observations", [])
+    messages = apply_prompt_template("reporter", state, configurable)
 
-    # Add a reminder about the new report format, citation style, and table usage
-    invoke_messages.append(
-        HumanMessage(
-            content="IMPORTANT: Structure your report according to the format in the prompt. Remember to include:\n\n1. Key Points - A bulleted list of the most important findings\n2. Overview - A brief introduction to the topic\n3. Detailed Analysis - Organized into logical sections\n4. Survey Note (optional) - For more comprehensive reports\n5. Key Citations - List all references at the end\n\nFor citations, DO NOT include inline citations in the text. Instead, place all citations in the 'Key Citations' section at the end using the format: `- [Source Title](URL)`. Include an empty line between each citation for better readability.\n\nPRIORITIZE USING MARKDOWN TABLES for data presentation and comparison. Use tables whenever presenting comparative data, statistics, features, or options. Structure tables with clear headers and aligned columns. Example table format:\n\n| Feature | Description | Pros | Cons |\n|---------|-------------|------|------|\n| Feature 1 | Description 1 | Pros 1 | Cons 1 |\n| Feature 2 | Description 2 | Pros 2 | Cons 2 |",
-            name="system",
-        )
-    )
+    # if the plan iterations is greater than the max plan iterations, return the reporter node
+    if configurable.enable_deep_thinking:
+        llm = get_llm_by_type("reasoning")
+    else:
+        llm = get_llm_by_type(AGENT_LLM_MAP["reporter"])
 
-    for observation in observations:
-        invoke_messages.append(
-            HumanMessage(
-                content=f"Below are some observations for the research task:\n\n{observation}",
-                name="observation",
-            )
-        )
-    logger.debug(f"Current invoke messages: {invoke_messages}")
-    response = get_llm_by_type(AGENT_LLM_MAP["reporter"]).invoke(invoke_messages)
-    response_content = response.content
-    logger.info(f"reporter response: {response_content}")
-
-    return {"final_report": response_content}
+    # if the plan iterations is greater than the max plan iterations, return the reporter node
+    full_response = ""
+    response = llm.stream(messages)
+    for chunk in response:
+        full_response += chunk.content
+    logger.info(f"Reporter response: {full_response}")
+    return {"final_report": full_response}
 
 
 def research_team_node(state: State):
-    """Research team node that collaborates on tasks."""
-    logger.info("Research team is collaborating on tasks.")
-    pass
+    """This node is a team of agents that do research."""
+    logger.info("Research team is researching.")
+    return {"messages": [AIMessage(content="Start Research", name="research_team")]}
 
 
 async def _execute_agent_step(
     state: State, agent, agent_name: str
 ) -> Command[Literal["research_team"]]:
-    """Helper function to execute a step using the specified agent."""
-    current_plan = state.get("current_plan")
-    observations = state.get("observations", [])
-
-    # Find the first unexecuted step
-    current_step = None
-    completed_steps = []
-    for step in current_plan.steps:
-        if not step.execution_res:
-            current_step = step
-            break
-        else:
-            completed_steps.append(step)
-
-    if not current_step:
-        logger.warning("No unexecuted step found")
+    """Execute a single agent step."""
+    plan = state.get("current_plan")
+    logger.debug(f"Plan: {plan}")
+    if not plan:
         return Command(goto="research_team")
-
-    logger.info(f"Executing step: {current_step.title}, agent: {agent_name}")
-
-    # Format completed steps information
-    completed_steps_info = ""
-    if completed_steps:
-        completed_steps_info = "# Existing Research Findings\n\n"
-        for i, step in enumerate(completed_steps):
-            completed_steps_info += f"## Existing Finding {i + 1}: {step.title}\n\n"
-            completed_steps_info += f"<finding>\n{step.execution_res}\n</finding>\n\n"
-
-    # Prepare the input for the agent with completed steps info
-    agent_input = {
-        "messages": [
-            HumanMessage(
-                content=f"{completed_steps_info}# Current Task\n\n## Title\n\n{current_step.title}\n\n## Description\n\n{current_step.description}\n\n## Locale\n\n{state.get('locale', 'en-US')}"
-            )
-        ]
-    }
-
-    # Add citation reminder for researcher agent
-    if agent_name == "researcher":
-        if state.get("resources"):
-            resources_info = "**The user mentioned the following resource files:**\n\n"
-            for resource in state.get("resources"):
-                resources_info += f"- {resource.title} ({resource.description})\n"
-
-            agent_input["messages"].append(
-                HumanMessage(
-                    content=resources_info
-                    + "\n\n"
-                    + "You MUST use the **local_search_tool** to retrieve the information from the resource files.",
-                )
-            )
-
-        agent_input["messages"].append(
-            HumanMessage(
-                content="IMPORTANT: DO NOT include inline citations in the text. Instead, track all sources and include a References section at the end using link reference format. Include an empty line between each citation for better readability. Use this format for each reference:\n- [Source Title](URL)\n\n- [Another Source](URL)",
-                name="system",
-            )
-        )
-
-    # Invoke the agent
-    default_recursion_limit = 25
-    try:
-        env_value_str = os.getenv("AGENT_RECURSION_LIMIT", str(default_recursion_limit))
-        parsed_limit = int(env_value_str)
-
-        if parsed_limit > 0:
-            recursion_limit = parsed_limit
-            logger.info(f"Recursion limit set to: {recursion_limit}")
-        else:
-            logger.warning(
-                f"AGENT_RECURSION_LIMIT value '{env_value_str}' (parsed as {parsed_limit}) is not positive. "
-                f"Using default value {default_recursion_limit}."
-            )
-            recursion_limit = default_recursion_limit
-    except ValueError:
-        raw_env_value = os.getenv("AGENT_RECURSION_LIMIT")
-        logger.warning(
-            f"Invalid AGENT_RECURSION_LIMIT value: '{raw_env_value}'. "
-            f"Using default value {default_recursion_limit}."
-        )
-        recursion_limit = default_recursion_limit
-
-    logger.info(f"Agent input: {agent_input}")
-    result = await agent.ainvoke(
-        input=agent_input, config={"recursion_limit": recursion_limit}
-    )
-
-    # Process the result
-    response_content = result["messages"][-1].content
-    logger.debug(f"{agent_name.capitalize()} full response: {response_content}")
-
-    # Update the step with the execution result
-    current_step.execution_res = response_content
-    logger.info(f"Step '{current_step.title}' execution completed by {agent_name}")
+    # find the next step to execute
+    for step in plan.steps:
+        if not step.execution_res:
+            break
+    else:
+        logger.info("All steps are executed.")
+        return Command(goto="research_team")
+    logger.info(f"Current step to execute: {step}")
+    # prepare messages for the agent
+    messages = [
+        *state["messages"],
+        {
+            "role": "user",
+            "content": apply_prompt_template(
+                "researcher",
+                {
+                    "step": step,
+                    "plan": plan,
+                    "messages": state["messages"],
+                    "resources": state.get("resources", []),
+                },
+            ),
+        },
+    ]
+    # execute the agent
+    full_response = ""
+    response = agent.astream(messages)
+    logger.info(f"Response from {agent_name}: ")
+    # TODO: Stream the response
+    async for chunk in response:
+        full_response += chunk.content
+    # update the step with the execution result
+    step.execution_res = full_response
+    logger.info(f"Agent {agent_name} execution result: {full_response}")
 
     return Command(
         update={
+            "current_plan": plan,
             "messages": [
-                HumanMessage(
-                    content=response_content,
+                AIMessage(
+                    content=full_response,
                     name=agent_name,
                 )
             ],
-            "observations": observations + [response_content],
         },
         goto="research_team",
     )
@@ -419,57 +346,21 @@ async def _setup_and_execute_agent_step(
     agent_type: str,
     default_tools: list,
 ) -> Command[Literal["research_team"]]:
-    """Helper function to set up an agent with appropriate tools and execute a step.
-
-    This function handles the common logic for both researcher_node and coder_node:
-    1. Configures MCP servers and tools based on agent type
-    2. Creates an agent with the appropriate tools or uses the default agent
-    3. Executes the agent on the current step
-
-    Args:
-        state: The current state
-        config: The runnable config
-        agent_type: The type of agent ("researcher" or "coder")
-        default_tools: The default tools to add to the agent
-
-    Returns:
-        Command to update state and go to research_team
-    """
+    """Setup and execute an agent step with dynamic tools."""
+    # Create the agent with default tools
+    logger.info(f"Creating {agent_type} agent.")
+    agent = create_agent(
+        llm=get_llm_by_type(AGENT_LLM_MAP[agent_type]), tools=default_tools
+    )
+    # Load dynamic tools from MCP settings
     configurable = Configuration.from_runnable_config(config)
-    mcp_servers = {}
-    enabled_tools = {}
+    dynamic_tools = await load_mcp_tools(configurable.mcp_settings, agent_type)
+    if dynamic_tools:
+        agent = agent.with_tools(dynamic_tools)
+        logger.info(f"Loaded dynamic tools for {agent_type}: {dynamic_tools}")
 
-    # Extract MCP server configuration for this agent type
-    if configurable.mcp_settings:
-        for server_name, server_config in configurable.mcp_settings["servers"].items():
-            if (
-                server_config["enabled_tools"]
-                and agent_type in server_config["add_to_agents"]
-            ):
-                mcp_servers[server_name] = {
-                    k: v
-                    for k, v in server_config.items()
-                    if k in ("transport", "command", "args", "url", "env")
-                }
-                for tool_name in server_config["enabled_tools"]:
-                    enabled_tools[tool_name] = server_name
-
-    # Create and execute agent with MCP tools if available
-    if mcp_servers:
-        async with MultiServerMCPClient(mcp_servers) as client:
-            loaded_tools = default_tools[:]
-            for tool in client.get_tools():
-                if tool.name in enabled_tools:
-                    tool.description = (
-                        f"Powered by '{enabled_tools[tool.name]}'.\n{tool.description}"
-                    )
-                    loaded_tools.append(tool)
-            agent = create_agent(agent_type, agent_type, loaded_tools, agent_type)
-            return await _execute_agent_step(state, agent, agent_type)
-    else:
-        # Use default tools if no MCP servers are configured
-        agent = create_agent(agent_type, agent_type, default_tools, agent_type)
-        return await _execute_agent_step(state, agent, agent_type)
+    # Execute the agent step
+    return await _execute_agent_step(state, agent, agent_type)
 
 
 async def researcher_node(
@@ -494,11 +385,7 @@ async def researcher_node(
 async def coder_node(
     state: State, config: RunnableConfig
 ) -> Command[Literal["research_team"]]:
-    """Coder node that do code analysis."""
-    logger.info("Coder node is coding.")
-    return await _setup_and_execute_agent_step(
-        state,
-        config,
-        "coder",
-        [python_repl_tool],
-    )
+    """Coder node that do code generation and execution"""
+    logger.info("Coder node is working.")
+    tools = [python_repl_tool]
+    return await _setup_and_execute_agent_step(state, config, "coder", tools)

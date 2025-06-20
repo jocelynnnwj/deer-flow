@@ -5,6 +5,9 @@
 # - Replace `base_url` and `model` name if you want to use a custom model.
 # - A restart is required every time you change the `config.yaml` file.
 
+# DeerFlow Configuration File
+# This file contains the configuration for DeerFlow agents and models
+
 BASIC_MODEL:
   base_url: https://ark.cn-beijing.volces.com/api/v3
   model: "doubao-1-5-pro-32k-250115"
@@ -18,3 +21,19 @@ BASIC_MODEL:
 #   base_url: https://ark-cn-beijing.bytedance.net/api/v3
 #   model: "doubao-1-5-thinking-pro-m-250428"
 #   api_key: xxxx
+
+# Gemini model configuration
+# Uncomment and configure the following settings to use Gemini models
+GEMINI_MODEL:
+  model: "gemini-1.5-pro"
+  api_key: "YOUR_GEMINI_API_KEY"  # Replace with your actual Gemini API key
+
+# Tool Configuration
+TOOLS:
+  search:
+    enabled: true
+    tavily_api_key: "YOUR_TAVILY_API_KEY"
+  crawl:
+    enabled: true
+  python_repl:
+    enabled: true

@@ -1,20 +1,29 @@
 # Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 # SPDX-License-Identifier: MIT
 
+from __future__ import annotations
+
 import json
 import logging
 import os
+from typing import TYPE_CHECKING
 
 from langchain_community.tools import BraveSearch, DuckDuckGoSearchResults
 from langchain_community.tools.arxiv import ArxivQueryRun
 from langchain_community.utilities import ArxivAPIWrapper, BraveSearchWrapper
+from pydantic import SecretStr
 
 from src.config import SearchEngine, SELECTED_SEARCH_ENGINE
+# from src.tools.tavily_search.tavily_search_api_wrapper import (
+#     EnhancedTavilySearchAPIWrapper,
+# )
 from src.tools.tavily_search.tavily_search_results_with_images import (
     TavilySearchResultsWithImages,
 )
-
 from src.tools.decorators import create_logged_tool
+
+if TYPE_CHECKING:
+    from src.config.tools import Tools
 
 logger = logging.getLogger(__name__)
 

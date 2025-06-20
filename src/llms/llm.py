@@ -2,18 +2,19 @@
 # SPDX-License-Identifier: MIT
 
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Union
 import os
 
 from langchain_openai import ChatOpenAI
 from langchain_deepseek import ChatDeepSeek
+from langchain_google_genai import ChatGoogleGenerativeAI
 from typing import get_args
 
 from src.config import load_yaml_config
 from src.config.agents import LLMType
 
 # Cache for LLM instances
-_llm_cache: dict[LLMType, ChatOpenAI] = {}
+_llm_cache: dict[LLMType, Union[ChatOpenAI, ChatDeepSeek, ChatGoogleGenerativeAI]] = {}
 
 
 def _get_config_file_path() -> str:
@@ -27,6 +28,7 @@ def _get_llm_type_config_keys() -> dict[str, str]:
         "reasoning": "REASONING_MODEL",
         "basic": "BASIC_MODEL",
         "vision": "VISION_MODEL",
+        "gemini": "GEMINI_MODEL",
     }
 
 
@@ -47,7 +49,7 @@ def _get_env_llm_conf(llm_type: str) -> Dict[str, Any]:
 
 def _create_llm_use_conf(
     llm_type: LLMType, conf: Dict[str, Any]
-) -> ChatOpenAI | ChatDeepSeek:
+) -> ChatOpenAI | ChatDeepSeek | ChatGoogleGenerativeAI:
     """Create LLM instance using configuration."""
     llm_type_config_keys = _get_llm_type_config_keys()
     config_key = llm_type_config_keys.get(llm_type)
@@ -70,17 +72,25 @@ def _create_llm_use_conf(
 
     if llm_type == "reasoning":
         merged_conf["api_base"] = merged_conf.pop("base_url", None)
+    elif llm_type == "gemini":
+        # For Gemini, we need to handle the API key differently
+        if "api_key" in merged_conf:
+            merged_conf["google_api_key"] = merged_conf.pop("api_key")
+        # Set default model if not specified
+        if "model" not in merged_conf:
+            merged_conf["model"] = "gemini-1.5-pro"
 
-    return (
-        ChatOpenAI(**merged_conf)
-        if llm_type != "reasoning"
-        else ChatDeepSeek(**merged_conf)
-    )
+    if llm_type == "reasoning":
+        return ChatDeepSeek(**merged_conf)
+    elif llm_type == "gemini":
+        return ChatGoogleGenerativeAI(**merged_conf)
+    else:
+        return ChatOpenAI(**merged_conf)
 
 
 def get_llm_by_type(
     llm_type: LLMType,
-) -> ChatOpenAI:
+) -> ChatOpenAI | ChatDeepSeek | ChatGoogleGenerativeAI:
     """
     Get LLM instance by type. Returns cached instance if available.
     """
