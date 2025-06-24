@@ -98,4 +98,9 @@ function mergeToolCallResultMessage(
 function mergeInterruptMessage(message: Message, event: InterruptEvent) {
   message.isStreaming = false;
   message.options = event.data.options;
+  if (event.data.content) {
+    message.content = typeof event.data.content === "string"
+      ? event.data.content
+      : JSON.stringify(event.data.content);
+  }
 }

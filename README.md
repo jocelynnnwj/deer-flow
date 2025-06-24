@@ -1,6 +1,11 @@
 # DeerFlow with Gemini
 
-This is a forked version of [DeerFlow](https://github.com/mPL-project/deer-flow) integrated with Google's Gemini Pro model. It serves as a comprehensive example of how to integrate a powerful generative model into a multi-agent research framework.
+This is a forked version of [DeerFlow](https://github.com/mPL-project/deer-flow) integrated with Google's Gemini Pro model. It demonstrates a multi-agent research framework with advanced generative AI capabilities, including:
+- **Text generation and research** (Gemini LLM)
+- **Image generation** (Gemini image model)
+- **Text-to-speech (TTS) audio generation** (Gemini TTS)
+
+You can use DeerFlow to orchestrate research, generate images, and synthesize speech—all powered by Gemini.
 
 ## Prerequisites
 
@@ -13,7 +18,7 @@ Before you begin, ensure you have the following installed and configured on your
     *   Python 3.11+
     *   We recommend using `uv` for Python package management. If you don't have it, you can install it with `pip install uv`.
 *   **API Keys**: The application relies on external services for its core functionality.
-    *   **Google Gemini API Key**: Powers the language model agents. You can get your key from [Google AI Studio](https://makersuite.google.com/app/apikey).
+    *   **Google Gemini API Key**: Powers the language model agents (text, image, and TTS). You can get your key from [Google AI Studio](https://makersuite.google.com/app/apikey). **You must enable both Gemini Pro (text), Gemini Pro Vision (image), and Gemini TTS in your Google AI Studio project.**
     *   **Tavily API Key**: Powers the web search tool. You can get your key from the [Tavily website](https://app.tavily.com/).
 
 ## Getting Started: A Step-by-Step Guide
@@ -128,6 +133,61 @@ You're all set! Open your web browser and navigate to `http://localhost:3000`. Y
 
 ---
 
+## 🛠️ Tool & Agent Descriptions
+
+### Agents
+- **Coordinator**: Handles user input and orchestrates the workflow.
+- **Planner**: Breaks down user requests into actionable steps (research, image, or speech generation).
+- **Researcher**: Gathers information using web search and retrieval tools.
+- **Coder**: Executes code and data processing steps.
+- **Image Generator**: Uses Gemini to generate images from prompts.
+- **Speech Generator**: Uses Gemini TTS to generate speech/audio from text.
+- **Reporter**: Compiles and presents the final report.
+- **Human Feedback**: Allows user review and acceptance of plans.
+
+### Tools
+- **Web Search**: Uses Tavily API to retrieve web results.
+- **Crawl**: Extracts readable content from URLs.
+- **Python REPL**: Executes Python code for data analysis.
+- **Gemini Image Tool**: Generates images from text prompts.
+- **Gemini TTS Tool**: Generates speech audio from text.
+
+---
+
+## ⚙️ Integration Notes
+
+- **Planner Node**:  
+  - Detects when a user request requires image or speech generation and adds the appropriate step.
+  - Routes directly to the `image_generator` or `speech_generator` node as needed.
+- **Graph Registration**:  
+  - All agents are registered as nodes in the LangGraph graph (`src/graph/builder.py`).
+  - Edges and conditional transitions ensure the correct agent is called for each step.
+- **Tool Registry**:  
+  - Tools are defined in `src/tools/` and registered with agents as needed.
+  - API keys are loaded from `conf.yaml` and `.env` (never committed to git).
+
+---
+
+## 🧪 Test Cases
+
+### 1. Image Generation
+- **Prompt:** "Generate an image of a cat."
+- **Expected:** Planner adds an image generation step, routes to image generator, and the UI displays the generated image.
+
+### 2. Speech Generation (TTS)
+- **Prompt:** "Read this aloud: Welcome!"
+- **Expected:** Planner adds a speech generation step, routes to speech generator, and the UI displays an audio player with the generated speech.
+
+### 3. Research Workflow
+- **Prompt:** "Summarize the latest news about quantum computing."
+- **Expected:** Planner creates research steps, researcher gathers data, and reporter compiles a summary.
+
+### 4. API Key Handling
+- **Test:** Remove or invalidate `.env` or `conf.yaml` keys.
+- **Expected:** Backend or tools fail gracefully with a clear error message.
+
+---
+
 ## 4. Troubleshooting
 - **Web UI 500 error**: Make sure the backend is running (`uv run server.py --reload`).
 - **Gemini not responding**: Check your API key in `conf.yaml` and network connectivity.
@@ -149,3 +209,13 @@ MIT License. See [LICENSE](./LICENSE).
 ## 7. Credits
 - Gemini integration based on [google-gemini/gemini-fullstack-langgraph-quickstart](https://github.com/google-gemini/gemini-fullstack-langgraph-quickstart)
 - DeerFlow by Bytedance Open Source
+
+## Known Workaround: State Propagation Bug
+
+Due to a bug in the workflow engine (state propagation between nodes), the following temporary workaround is implemented:
+
+- The **planner node** adds the current step (for image generation) as a special system message to the messages list, with `content: '__STEP__'` and the step as a dict in the `step` field (or `additional_kwargs`).
+- The **image generator node** checks for this special message in the messages list and recovers the step from it if `state['step']` is missing.
+- This ensures the correct prompt is always passed to the image generator, even if the state update is not merged as expected.
+
+**Note:** This is a temporary hack. Once the underlying state propagation bug is fixed in the workflow engine, this workaround should be removed and normal state passing should be restored.

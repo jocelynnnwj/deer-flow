@@ -17,4 +17,6 @@ AGENT_LLM_MAP: dict[str, LLMType] = {
     "ppt_composer": "gemini",
     "prose_writer": "gemini",
     "prompt_enhancer": "gemini",
+    "image_generator": "gemini",
+    "speech_generator": "gemini",
 }

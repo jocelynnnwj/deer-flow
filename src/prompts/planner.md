@@ -72,6 +72,30 @@ Different types of steps have different web search requirements:
    - Mathematical calculations and analysis
    - Statistical computations and data processing
 
+3. **Image Generation Steps** (`step_type: image_generation`):
+   - If the user requests to generate, create, or visualize an image, add a step with `step_type: image_generation`.
+   - Example: If the user says "Generate an image of a cat", create a step:
+     ```json
+     {
+       "need_search": false,
+       "title": "Generate an image of a cat",
+       "description": "Create a high-quality image of a cat based on the user's request.",
+       "step_type": "image_generation"
+     }
+     ```
+
+4. **Speech Generation Steps** (`step_type: speech_generation`):
+   - If the user requests to generate, read aloud, or synthesize speech/audio, add a step with `step_type: speech_generation`.
+   - Example: If the user says "Read this aloud: Welcome!", create a step:
+     ```json
+     {
+       "need_search": false,
+       "title": "Read aloud: Welcome!",
+       "description": "Convert the text 'Welcome!' to speech using TTS.",
+       "step_type": "speech_generation"
+     }
+     ```
+
 ## Exclusions
 
 - **No Direct Calculations in Research Steps**:
@@ -150,6 +174,10 @@ When planning information gathering, consider these key aspects and ensure COMPR
 - Prioritize depth and volume of relevant information - limited information is not acceptable.
 - Use the same language as the user to generate the plan.
 - Do not include steps for summarizing or consolidating the gathered information.
+- If the user's request involves generating, creating, or visualizing an image (e.g., "Generate an image of a cat"), you MUST always add a step with "step_type": "image_generation" to the steps array, regardless of context sufficiency. Do NOT set "has_enough_context" to true and skip steps in this case.
+
+# Special Rule for Image Generation
+If the user prompt contains a request to generate, create, or visualize an image, you MUST always add a step with "step_type": "image_generation" to the steps array, even if you believe there is already enough context. Do NOT skip this step.
 
 # Output Format
 
@@ -160,7 +188,7 @@ interface Step {
   need_search: boolean; // Must be explicitly set for each step
   title: string;
   description: string; // Specify exactly what data to collect. If the user input contains a link, please retain the full Markdown format when necessary.
-  step_type: "research" | "processing"; // Indicates the nature of the step
+  step_type: "research" | "processing" | "image_generation" | "speech_generation"; // Indicates the nature of the step
 }
 
 interface Plan {
@@ -168,7 +196,7 @@ interface Plan {
   has_enough_context: boolean;
   thought: string;
   title: string;
-  steps: Step[]; // Research & Processing steps to get more context
+  steps: Step[]; // Research, Processing, Image, and Speech steps to get more context
 }
 ```
 
@@ -185,3 +213,5 @@ interface Plan {
   - Processing steps (`need_search: false`) for calculations and data processing
 - Default to gathering more information unless the strictest sufficient context criteria are met
 - Always use the language specified by the locale = **{{ locale }}**.
+
+Respond ONLY with a valid JSON object describing the plan. Do not include any explanation, markdown formatting, or code block markers.

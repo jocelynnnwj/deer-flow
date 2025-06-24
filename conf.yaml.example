@@ -28,6 +28,11 @@ GEMINI_MODEL:
   model: "gemini-1.5-pro"
   api_key: "YOUR_GEMINI_API_KEY"  # Replace with your actual Gemini API key
 
+# Google AI Studio configuration for image and speech generation
+# Uncomment and configure the following settings to use Google AI Studio
+GOOGLE_AI_STUDIO:
+  api_key: "YOUR_GOOGLE_AI_STUDIO_API_KEY"  # Replace with your actual Google AI Studio API key
+
 # Tool Configuration
 TOOLS:
   search:
@@ -36,4 +41,8 @@ TOOLS:
   crawl:
     enabled: true
   python_repl:
+    enabled: true
+  image_generation:
+    enabled: true
+  speech_generation:
     enabled: true

@@ -4,6 +4,7 @@
 import logging
 import json
 import json_repair
+import re
 
 logger = logging.getLogger(__name__)
 
@@ -37,3 +38,28 @@ def repair_json_output(content: str) -> str:
         except Exception as e:
             logger.warning(f"JSON repair failed: {e}")
     return content
+
+
+def extract_json_from_text(text):
+    """
+    Extract the first valid JSON object from a string, even if surrounded by text/markdown.
+    Returns the JSON string, or None if not found.
+    """
+    stack = []
+    start = None
+    for i, c in enumerate(text):
+        if c == '{':
+            if not stack:
+                start = i
+            stack.append(c)
+        elif c == '}':
+            if stack:
+                stack.pop()
+                if not stack and start is not None:
+                    candidate = text[start:i+1]
+                    try:
+                        json.loads(candidate)
+                        return candidate
+                    except Exception:
+                        continue
+    return None

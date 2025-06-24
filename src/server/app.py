@@ -11,8 +11,9 @@ from uuid import uuid4
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response, StreamingResponse
-from langchain_core.messages import AIMessageChunk, ToolMessage, BaseMessage
+from langchain_core.messages import AIMessageChunk, ToolMessage, BaseMessage, AIMessage
 from langgraph.types import Command
+from fastapi.staticfiles import StaticFiles
 
 from src.config.report_style import ReportStyle
 from src.config.tools import SELECTED_RAG_PROVIDER
@@ -51,6 +52,10 @@ app = FastAPI(
     description="API for Deer",
     version="0.1.0",
 )
+
+# 挂载静态文件服务，允许通过 /static 访问项目根目录下的文件
+static_dir = os.path.abspath(".")
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
 
 # Add CORS middleware
 app.add_middleware(
@@ -190,6 +195,12 @@ async def _astream_workflow_generator(
             else:
                 # AI Message - Raw message tokens
                 yield _make_event("message_chunk", event_stream_message)
+        elif isinstance(message_chunk, AIMessage):
+            # Handle plain AIMessage (like image_generator messages)
+            yield _make_event("message_chunk", event_stream_message)
+        else:
+            # ... handle other message types if needed ...
+            pass
 
 
 def _make_event(event_type: str, data: dict[str, any]):
@@ -414,3 +425,95 @@ async def config():
         rag=RAGConfigResponse(provider=SELECTED_RAG_PROVIDER),
         models=get_configured_llm_models(),
     )
+
+
+@app.post("/api/image/generate")
+async def generate_image(
+    prompt: str,
+    aspect_ratio: str = "1:1",
+    size: str = "1024x1024",
+    style: str = None,
+    quality: str = "standard",
+):
+    """Generate an image using Google AI Studio Imagen-3."""
+    try:
+        logger.info(f"Generating image with prompt: {prompt[:100]}...")
+        
+        # Call the image generation tool
+        result = generate_image_tool.invoke({
+            "prompt": prompt,
+            "aspect_ratio": aspect_ratio,
+            "size": size,
+            "style": style,
+            "quality": quality
+        })
+        
+        # Parse the result
+        result_data = json.loads(result)
+        
+        if not result_data.get("success"):
+            raise HTTPException(status_code=500, detail=str(result_data.get("error", "Image generation failed")))
+        
+        # Decode the base64 image data
+        image_data = base64.b64decode(result_data["image_data"])
+        
+        # Determine content type from mime_type
+        content_type = result_data.get("mime_type", "image/png")
+        
+        # Return the image file
+        return Response(
+            content=image_data,
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f"attachment; filename=generated_image.{content_type.split('/')[-1]}"
+            },
+        )
+        
+    except Exception as e:
+        logger.exception(f"Error in image generation endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=INTERNAL_SERVER_ERROR_DETAIL)
+
+
+@app.post("/api/speech/generate")
+async def generate_speech(
+    text: str,
+    voice: str = "alloy",
+    speed: float = 1.0,
+    pitch: float = 0.0,
+):
+    """Generate speech from text using Google AI Studio Gemini TTS."""
+    try:
+        logger.info(f"Generating speech for text: {text[:100]}...")
+        
+        # Call the speech generation tool
+        result = generate_speech_tool.invoke({
+            "text": text,
+            "voice": voice,
+            "speed": speed,
+            "pitch": pitch
+        })
+        
+        # Parse the result
+        result_data = json.loads(result)
+        
+        if not result_data.get("success"):
+            raise HTTPException(status_code=500, detail=str(result_data.get("error", "Speech generation failed")))
+        
+        # Decode the base64 audio data
+        audio_data = base64.b64decode(result_data["audio_data"])
+        
+        # Determine content type from mime_type
+        content_type = result_data.get("mime_type", "audio/mp3")
+        
+        # Return the audio file
+        return Response(
+            content=audio_data,
+            media_type=content_type,
+            headers={
+                "Content-Disposition": f"attachment; filename=generated_speech.{content_type.split('/')[-1]}"
+            },
+        )
+        
+    except Exception as e:
+        logger.exception(f"Error in speech generation endpoint: {str(e)}")
+        raise HTTPException(status_code=500, detail=INTERNAL_SERVER_ERROR_DETAIL)

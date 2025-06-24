@@ -60,6 +60,8 @@ export const useStore = create<{
     set((state) => {
       const newMessages = new Map(state.messages);
       messages.forEach((m) => newMessages.set(m.id, m));
+      // Debug log: print all messages after update
+      console.log('[zustand] updateMessages - all messages:', Array.from(newMessages.values()));
       return { messages: newMessages };
     });
   },

@@ -10,7 +10,7 @@ import {
   ChevronRight,
   Lightbulb,
 } from "lucide-react";
-import React, { useCallback, useMemo, useRef, useState } from "react";
+import React, { useCallback, useMemo, useRef, useState, useEffect } from "react";
 
 import { LoadingAnimation } from "~/components/deer-flow/loading-animation";
 import { Markdown } from "~/components/deer-flow/markdown";
@@ -62,7 +62,9 @@ export function MessageListView({
 }) {
   const scrollContainerRef = useRef<ScrollContainerRef>(null);
   const messageIds = useMessageIds();
+  console.log("[MessageListView] messageIds:", messageIds);
   const interruptMessage = useLastInterruptMessage();
+  console.log("[MessageListView] interruptMessage:", interruptMessage);
   const waitingForFeedbackMessageId = useLastFeedbackMessageId();
   const responding = useStore((state) => state.responding);
   const noOngoingResearch = useStore(
@@ -71,6 +73,30 @@ export function MessageListView({
   const ongoingResearchIsOpen = useStore(
     (state) => state.ongoingResearchId === state.openResearchId,
   );
+
+  useEffect(() => {
+    let parsed = interruptMessage;
+    if (interruptMessage && typeof interruptMessage.content === "string") {
+      try {
+        parsed = JSON.parse(interruptMessage.content);
+      } catch {
+        parsed = interruptMessage;
+      }
+    } else if (interruptMessage && typeof interruptMessage.content === "object") {
+      parsed = interruptMessage.content;
+    }
+    if (
+      interruptMessage &&
+      interruptMessage.finishReason === "interrupt" &&
+      parsed &&
+      parsed.content === "Please Review the Plan." &&
+      Array.isArray(parsed.options) &&
+      parsed.options.some(opt => opt.value === "accepted")
+    ) {
+      console.log("[MessageListView] Auto-accepting plan...");
+      onSendMessage && onSendMessage("accepted");
+    }
+  }, [interruptMessage, onSendMessage]);
 
   const handleToggleResearch = useCallback(() => {
     // Fix the issue where auto-scrolling to the bottom
@@ -134,6 +160,28 @@ function MessageListItem({
   onToggleResearch?: () => void;
 }) {
   const message = useMessage(messageId);
+  if (!message) return null;
+  console.log("[MessageListItem] messageId:", messageId, message);
+  console.log("[MessageListItem] message.content:", message.content);
+
+  let parsedContent = null;
+  try {
+    if (typeof message.content === 'string') {
+      // Try to extract JSON substring if message.content contains "Speech generated: ..."
+      const match = message.content.match(/{.*}/s);
+      if (match) {
+        parsedContent = JSON.parse(match[0]);
+      } else if (
+        message.content.trim().startsWith('{') ||
+        message.content.trim().startsWith('[')
+      ) {
+        parsedContent = JSON.parse(message.content);
+      }
+    }
+  } catch (e) {
+    console.warn("Failed to parse message.content", message.content, e);
+  }
+  console.log("[MessageListItem] parsed content:", parsedContent);
   const researchIds = useStore((state) => state.researchIds);
   const startOfResearch = useMemo(() => {
     return researchIds.includes(messageId);
@@ -144,6 +192,8 @@ function MessageListItem({
       message.agent === "coordinator" ||
       message.agent === "planner" ||
       message.agent === "podcast" ||
+      message.agent === "image_generator" ||
+      message.agent === "speech_generator" ||
       startOfResearch
     ) {
       let content: React.ReactNode;
@@ -185,14 +235,33 @@ function MessageListItem({
           >
             <MessageBubble message={message}>
               <div className="flex w-full flex-col text-wrap break-words">
-                <Markdown
-                  className={cn(
-                    message.role === "user" &&
-                      "prose-invert not-dark:text-secondary dark:text-inherit",
-                  )}
-                >
-                  {message?.content}
-                </Markdown>
+                {(() => {
+                  if (parsedContent && parsedContent.type === "image" && parsedContent.url) {
+                    return <img src={parsedContent.url} alt="AI generated image" style={{ maxWidth: 400 }} />;
+                  }
+                  // TTS audio message
+                  if (parsedContent && parsedContent.type === "audio" && parsedContent.url) {
+                    console.log("Rendering audio player for", parsedContent.url);
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                        <span style={{ fontWeight: 500, marginBottom: 4 }}>Speech Output:</span>
+                        <audio controls src={parsedContent.url} style={{ maxWidth: 400 }}>
+                          Your browser does not support the audio element.
+                        </audio>
+                      </div>
+                    );
+                  }
+                  return (
+                    <Markdown
+                      className={cn(
+                        message.role === "user" &&
+                          "prose-invert not-dark:text-secondary dark:text-inherit",
+                      )}
+                    >
+                      {message?.content}
+                    </Markdown>
+                  );
+                })()}
               </div>
             </MessageBubble>
           </div>
