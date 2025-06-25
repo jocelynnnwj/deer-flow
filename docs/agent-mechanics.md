@@ -191,18 +191,18 @@ def coordinator_node(state: State, config: RunnableConfig):
 graph TD
     A[User Input] --> B[Coordinator Node]
     B --> C{Request Type?}
-    C -->|Simple Greeting| D[End]
-    C -->|Research Task| E{Background Investigation?}
-    E -->|Yes| F[Background Investigator]
-    E -->|No| G[Planner Node]
+    C -- Simple Greeting --> D[End]
+    C -- Research Task --> E{Background Investigation?}
+    E -- Yes --> F[Background Investigator]
+    E -- No --> G[Planner Node]
     F --> G
     G --> H[Create Execution Plan]
     H --> I[Research Team Node]
     I --> J{Next Step Type?}
-    J -->|step_type == "research"| K[Researcher Node]
-    J -->|step_type == "processing"| L[Coder Node]
-    J -->|step_type == "image_generation"| M[Image Generator Node]
-    J -->|step_type == "speech_generation"| N[Speech Generator Node]
+    J -- research --> K[Researcher Node]
+    J -- processing --> L[Coder Node]
+    J -- image_generation --> M[Image Generator Node]
+    J -- speech_generation --> N[Speech Generator Node]
     K --> O[Tool Execution: web_search, crawl, retriever]
     L --> P[Tool Execution: python_repl]
     M --> Q[Tool Execution: generate_image]
@@ -212,8 +212,8 @@ graph TD
     Q --> S
     R --> S
     S --> T{All Steps Complete?}
-    T -->|No| I
-    T -->|Yes| U[Reporter Node]
+    T -- No --> I
+    T -- Yes --> U[Reporter Node]
     U --> V[Generate Final Report]
     V --> W[End]
 ```
