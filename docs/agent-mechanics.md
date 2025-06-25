@@ -119,7 +119,32 @@ graph TD
 - **Plan Context**: Execution plan and results maintained throughout workflow
 - **Resource Context**: Retrieved resources available to all subsequent agents
 
-### 4. Tool Usage
+### 4. Agent Overview Table
+
+#### Comprehensive Agent Roles and Responsibilities
+
+| Agent | Prompt Template | Tools Used | Context Shared | Output Updates | Primary Function |
+|-------|----------------|------------|----------------|----------------|------------------|
+| **Coordinator** | `coordinator.md` | `handoff_to_planner` | `research_topic`, `locale` | `research_topic`, `locale` | Route requests and handle greetings |
+| **Background Investigator** | `background_investigator.md` | `web_search_tool` | `research_topic` | `background_investigation_results` | Pre-planning research |
+| **Planner** | `planner.md` | None | `research_topic`, `background_results` | `current_plan`, `plan_iterations` | Create execution plans |
+| **Research Team** | None (router) | None | `current_plan` | `messages` | Route to specialized agents |
+| **Researcher** | `researcher.md` | `web_search_tool`, `crawl_tool`, `retriever_tool` | `resources`, `plan`, `step` | `observations`, `execution_res` | Web research and content analysis |
+| **Coder** | `coder.md` | `python_repl_tool` | `plan`, `step` | `execution_res` | Code execution and analysis |
+| **Image Generator** | `image_generator.md` | `generate_image_tool` | `step` | `execution_res` | Image generation |
+| **Speech Generator** | `speech_generator.md` | `generate_speech_tool` | `step` | `execution_res` | Text-to-speech conversion |
+| **Reporter** | `reporter.md` | None | `observations`, `plan`, `resources` | `final_report` | Final report synthesis |
+| **Human Feedback** | `human_feedback.md` | None | `current_plan` | `auto_accepted_plan` | Plan approval/rejection |
+
+**Agent Specialization Details:**
+
+- **Coordinator**: Entry point that classifies requests and routes to appropriate workflow
+- **Planner**: Creates structured execution plans with multiple steps
+- **Research Team**: Orchestrates execution of plan steps by routing to specialized agents
+- **Specialized Agents**: Handle specific task types (research, coding, image/speech generation)
+- **Reporter**: Synthesizes all findings into final comprehensive report
+
+### 5. Tool Usage
 
 #### How Agents Decide When and Which Tool to Invoke
 
@@ -156,7 +181,7 @@ def coordinator_node(state: State, config: RunnableConfig):
 4. Tool calls are extracted from response
 5. Graph routes to appropriate next node based on tool usage
 
-### 5. Agent-Tool Flow
+### 6. Agent-Tool Flow
 
 #### Full Cycle: Input → Planning → Tool → Result
 
@@ -165,27 +190,32 @@ def coordinator_node(state: State, config: RunnableConfig):
 ```mermaid
 graph TD
     A[User Input] --> B[Coordinator Node]
-    B --> C{Handoff Decision}
-    C -->|Research Task| D[Background Investigator]
-    C -->|Simple Greeting| E[End]
-    D --> F[Planner Node]
-    F --> G[Create Execution Plan]
-    G --> H[Research Team Node]
-    H --> I{Next Step Type}
-    I -->|Research| J[Researcher Node]
-    I -->|Processing| K[Coder Node]
-    I -->|Image Gen| L[Image Generator Node]
-    I -->|Speech Gen| M[Speech Generator Node]
-    J --> N[Tool Execution]
-    K --> N
-    L --> N
-    M --> N
-    N --> O[Update Plan Results]
-    O --> P{All Steps Complete?}
-    P -->|No| H
-    P -->|Yes| Q[Reporter Node]
-    Q --> R[Generate Final Report]
-    R --> S[End]
+    B --> C{Request Type?}
+    C -->|Simple Greeting| D[End]
+    C -->|Research Task| E{Background Investigation?}
+    E -->|Yes| F[Background Investigator]
+    E -->|No| G[Planner Node]
+    F --> G
+    G --> H[Create Execution Plan]
+    H --> I[Research Team Node]
+    I --> J{Next Step Type?}
+    J -->|step_type == "research"| K[Researcher Node]
+    J -->|step_type == "processing"| L[Coder Node]
+    J -->|step_type == "image_generation"| M[Image Generator Node]
+    J -->|step_type == "speech_generation"| N[Speech Generator Node]
+    K --> O[Tool Execution: web_search, crawl, retriever]
+    L --> P[Tool Execution: python_repl]
+    M --> Q[Tool Execution: generate_image]
+    N --> R[Tool Execution: generate_speech]
+    O --> S[Update Plan Results]
+    P --> S
+    Q --> S
+    R --> S
+    S --> T{All Steps Complete?}
+    T -->|No| I
+    T -->|Yes| U[Reporter Node]
+    U --> V[Generate Final Report]
+    V --> W[End]
 ```
 
 **Detailed Flow Breakdown:**
