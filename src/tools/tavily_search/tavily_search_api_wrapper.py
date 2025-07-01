@@ -111,3 +111,26 @@ class EnhancedTavilySearchAPIWrapper(OriginalTavilySearchAPIWrapper):
             }
             clean_results.append(clean_result)
         return clean_results
+
+def search_twitter(query: str, max_results: int = 5) -> str:
+    """
+    Search Twitter/X using Tavily and return clean text content.
+    Args:
+        query (str): The search query.
+        max_results (int): Number of results to return.
+    Returns:
+        str: Cleaned, relevant text content from Twitter/X.
+    """
+    wrapper = EnhancedTavilySearchAPIWrapper()
+    raw = wrapper.raw_results(
+        query=query,
+        max_results=max_results,
+        include_domains=["twitter.com"],
+        include_answer=False,
+        include_raw_content=True,
+        include_images=False,
+        include_image_descriptions=False,
+    )
+    results = raw.get("results", [])
+    # Join all content fields into a single string
+    return "\n\n".join(r.get("content", "") for r in results if r.get("content"))

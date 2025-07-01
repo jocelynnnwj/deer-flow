@@ -152,6 +152,23 @@ You're all set! Open your web browser and navigate to `http://localhost:3000`. Y
 - **Gemini Image Tool**: Generates images from text prompts.
 - **Gemini TTS Tool**: Generates speech audio from text.
 
+### Tavily Twitter/X Search Tool
+
+The recommended way to use Tavily for social media search in DeerFlow is via the `search_twitter` function:
+
+```python
+from src.tools.tavily_search.tavily_search_api_wrapper import search_twitter
+
+# Search Twitter/X for a query
+result = search_twitter("OpenAI GPT-4", max_results=3)
+print(result)
+```
+
+- This function returns clean, relevant text content from Twitter/X using Tavily.
+- The Tavily API key must be set in your environment as `TAVILY_API_KEY` (see setup instructions above).
+- To search other platforms (e.g., Reddit), adapt the function to use `include_domains=["reddit.com"]`.
+- For general web search, use the Tavily wrapper without the domain filter.
+
 ---
 
 ## ⚙️ Integration Notes
