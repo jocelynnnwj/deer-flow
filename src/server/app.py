@@ -138,6 +138,8 @@ async def _astream_workflow_generator(
         stream_mode=["messages", "updates"],
         subgraphs=True,
     ):
+        # --- LOG RAW EVENT DATA FROM AGENT/TOOL ---
+        print("[DeerFlow DEBUG] Raw event_data from agent/tool:", event_data)
         if isinstance(event_data, dict):
             if "__interrupt__" in event_data:
                 yield _make_event(
@@ -165,6 +167,9 @@ async def _astream_workflow_generator(
             "role": "assistant",
             "content": message_chunk.content,
         }
+        # DEBUG: Log the full SSE payload to the frontend
+        print("=== [DeerFlow DEBUG] SSE payload to frontend ===")
+        print(event_stream_message)
         if message_chunk.additional_kwargs.get("reasoning_content"):
             event_stream_message["reasoning_content"] = message_chunk.additional_kwargs[
                 "reasoning_content"
@@ -173,6 +178,8 @@ async def _astream_workflow_generator(
             event_stream_message["finish_reason"] = message_chunk.response_metadata.get(
                 "finish_reason"
             )
+        # --- LOG FINAL SSE PAYLOAD ---
+        print("[DeerFlow DEBUG] SSE payload to frontend:", event_stream_message)
         if isinstance(message_chunk, ToolMessage):
             # Tool Message - Return the result of the tool call
             event_stream_message["tool_call_id"] = message_chunk.tool_call_id

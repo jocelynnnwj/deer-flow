@@ -2,135 +2,113 @@
 # Copyright (c) 2025 Bytedance Ltd. and/or its affiliates
 # SPDX-License-Identifier: MIT
 
-import json
-from typing import Dict, List, Optional
-
 import aiohttp
-import requests
-from langchain_community.utilities.tavily_search import TAVILY_API_URL
-from langchain_community.utilities.tavily_search import (
-    TavilySearchAPIWrapper as OriginalTavilySearchAPIWrapper,
-)
+import os
+import json
+import re
+from datetime import datetime
+import logging
+logger = logging.getLogger(__name__)
 
+TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
-class EnhancedTavilySearchAPIWrapper(OriginalTavilySearchAPIWrapper):
-    def raw_results(
-        self,
-        query: str,
-        max_results: Optional[int] = 5,
-        search_depth: Optional[str] = "advanced",
-        include_domains: Optional[List[str]] = [],
-        exclude_domains: Optional[List[str]] = [],
-        include_answer: Optional[bool] = False,
-        include_raw_content: Optional[bool] = False,
-        include_images: Optional[bool] = False,
-        include_image_descriptions: Optional[bool] = False,
-    ) -> Dict:
-        params = {
-            "api_key": self.tavily_api_key.get_secret_value(),
-            "query": query,
-            "max_results": max_results,
-            "search_depth": search_depth,
-            "include_domains": include_domains,
-            "exclude_domains": exclude_domains,
-            "include_answer": include_answer,
-            "include_raw_content": include_raw_content,
-            "include_images": include_images,
-            "include_image_descriptions": include_image_descriptions,
-        }
-        response = requests.post(
-            # type: ignore
-            f"{TAVILY_API_URL}/search",
-            json=params,
-        )
-        response.raise_for_status()
-        return response.json()
+PLATFORM_EMOJIS = {
+    "twitter.com": "🐦",
+    "x.com": "🐦",
+    "linkedin.com": "💼",
+    "instagram.com": "📸",
+    "reddit.com": "👽",
+}
 
-    async def raw_results_async(
-        self,
-        query: str,
-        max_results: Optional[int] = 5,
-        search_depth: Optional[str] = "advanced",
-        include_domains: Optional[List[str]] = [],
-        exclude_domains: Optional[List[str]] = [],
-        include_answer: Optional[bool] = False,
-        include_raw_content: Optional[bool] = False,
-        include_images: Optional[bool] = False,
-        include_image_descriptions: Optional[bool] = False,
-    ) -> Dict:
-        """Get results from the Tavily Search API asynchronously."""
+def escape_md(text):
+    if not text:
+        return ""
+    # Escape Markdown special characters
+    return re.sub(r'([*_`\[\]()~>#+\-=|{}.!])', r'\\\1', str(text))
 
-        # Function to perform the API call
-        async def fetch() -> str:
-            params = {
-                "api_key": self.tavily_api_key.get_secret_value(),
-                "query": query,
-                "max_results": max_results,
-                "search_depth": search_depth,
-                "include_domains": include_domains,
-                "exclude_domains": exclude_domains,
-                "include_answer": include_answer,
-                "include_raw_content": include_raw_content,
-                "include_images": include_images,
-                "include_image_descriptions": include_image_descriptions,
-            }
-            async with aiohttp.ClientSession(trust_env=True) as session:
-                async with session.post(f"{TAVILY_API_URL}/search", json=params) as res:
-                    if res.status == 200:
-                        data = await res.text()
-                        return data
-                    else:
-                        raise Exception(f"Error {res.status}: {res.reason}")
+def normalize_date(date_str):
+    if not date_str:
+        return ""
+    try:
+        dt = datetime.fromisoformat(date_str)
+        return dt.strftime("%Y-%m-%d %H:%M")
+    except Exception:
+        return date_str
 
-        results_json_str = await fetch()
-        return json.loads(results_json_str)
+def dedup_results(results):
+    seen_urls = set()
+    seen_content = set()
+    deduped = []
+    for r in results:
+        url = r.get("url")
+        content = r.get("content", "").strip()
+        if url in seen_urls or content in seen_content:
+            continue
+        seen_urls.add(url)
+        seen_content.add(content)
+        deduped.append(r)
+    return deduped
 
-    def clean_results_with_images(
-        self, raw_results: Dict[str, List[Dict]]
-    ) -> List[Dict]:
-        results = raw_results["results"]
-        """Clean results from Tavily Search API."""
-        clean_results = []
-        for result in results:
-            clean_result = {
-                "type": "page",
-                "title": result["title"],
-                "url": result["url"],
-                "content": result["content"],
-                "score": result["score"],
-            }
-            if raw_content := result.get("raw_content"):
-                clean_result["raw_content"] = raw_content
-            clean_results.append(clean_result)
-        images = raw_results["images"]
-        for image in images:
-            clean_result = {
-                "type": "image",
-                "image_url": image["url"],
-                "image_description": image["description"],
-            }
-            clean_results.append(clean_result)
-        return clean_results
+async def search_tavily(query: str, max_results: int = 5, domain: str = None):
+    url = "https://api.tavily.com/search"
+    headers = {"Authorization": f"Bearer {TAVILY_API_KEY}"}
+    params = {
+        "query": query,
+        "max_results": max_results,
+    }
+    if domain:
+        params["domain"] = domain
+    logger.info(f"[TAVILY] Query: {query}, Params: {params}")
+    async with aiohttp.ClientSession() as session:
+        async with session.post(url, headers=headers, json=params) as resp:
+            data = await resp.json()
+            logger.info(f"[TAVILY] Raw response: {json.dumps(data, indent=2, ensure_ascii=False)}")
+            results = data.get("results", [])
+            results = dedup_results(results)
+            md_blocks = []
+            for r in results:
+                title = escape_md(r.get("title", ""))
+                url_ = r.get("url", "")
+                content = escape_md(r.get("content", ""))
+                image_url = r.get("image_url") or r.get("image")
+                username = escape_md(r.get("author") or r.get("username") or "")
+                timestamp = normalize_date(r.get("timestamp") or r.get("published_time") or "")
+                platform = domain if domain is not None else (url_.split("/")[2] if url_ else "")
+                platform = str(platform)
+                badge = PLATFORM_EMOJIS.get(platform, "🌐")
+                if len(content) > 400:
+                    content = content[:400] + f"... [Read more]({url_})"
+                # --- New prominent metadata block ---
+                meta_top = []
+                if username:
+                    meta_top.append(f"👤 **User:** {username}")
+                if timestamp:
+                    meta_top.append(f"🕒 **Time:** {timestamp}")
+                meta_top_str = "  ".join(meta_top)
+                image_block = f"\n![Preview]({image_url})\n" if image_url else ""
+                # ---
+                raw_meta = json.dumps(r, ensure_ascii=False)
+                md = f"{badge} **[{title}]({url_})**\n"
+                if meta_top_str:
+                    md += f"{meta_top_str}\n"
+                if image_block:
+                    md += f"{image_block}"
+                md += f"\n{content}\n"
+                md += f"\n🔗 [Open in {platform}]({url_}) 🏷️ **Source:** {platform}"
+                md += f"\n<!-- RAW_METADATA: {raw_meta} -->\n"
+                md_blocks.append(md)
+            output = "\n\n".join(md_blocks) if md_blocks else "No results found."
+            logger.info(f"[TAVILY] Markdown output: {output[:500]}")  # Truncate for log
+            return output
 
-def search_twitter(query: str, max_results: int = 5) -> str:
-    """
-    Search Twitter/X using Tavily and return clean text content.
-    Args:
-        query (str): The search query.
-        max_results (int): Number of results to return.
-    Returns:
-        str: Cleaned, relevant text content from Twitter/X.
-    """
-    wrapper = EnhancedTavilySearchAPIWrapper()
-    raw = wrapper.raw_results(
-        query=query,
-        max_results=max_results,
-        include_domains=["twitter.com"],
-        include_answer=False,
-        include_raw_content=True,
-        include_images=False,
-        include_image_descriptions=False,
-    )
-    results = raw.get("results", [])
-    # Join all content fields into a single string
-    return "\n\n".join(r.get("content", "") for r in results if r.get("content"))
+async def search_linkedin(query: str, max_results: int = 5):
+    """Search LinkedIn for results using Tavily API."""
+    return await search_tavily(query, max_results=max_results, domain="linkedin.com")
+
+async def search_instagram(query: str, max_results: int = 5):
+    """Search Instagram for results using Tavily API."""
+    return await search_tavily(query, max_results=max_results, domain="instagram.com")
+
+async def search_reddit(query: str, max_results: int = 5):
+    """Search Reddit for results using Tavily API."""
+    return await search_tavily(query, max_results=max_results, domain="reddit.com")

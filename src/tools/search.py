@@ -17,9 +17,9 @@ from src.config import SearchEngine, SELECTED_SEARCH_ENGINE
 # from src.tools.tavily_search.tavily_search_api_wrapper import (
 #     EnhancedTavilySearchAPIWrapper,
 # )
-from src.tools.tavily_search.tavily_search_results_with_images import (
-    TavilySearchResultsWithImages,
-)
+# Remove: from src.tools.tavily_search.tavily_search_results_with_images import (
+#     TavilySearchResultsWithImages,
+# )
 from src.tools.decorators import create_logged_tool
 
 if TYPE_CHECKING:
@@ -28,7 +28,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # Create logged versions of the search tools
-LoggedTavilySearch = create_logged_tool(TavilySearchResultsWithImages)
 LoggedDuckDuckGoSearch = create_logged_tool(DuckDuckGoSearchResults)
 LoggedBraveSearch = create_logged_tool(BraveSearch)
 LoggedArxivSearch = create_logged_tool(ArxivQueryRun)
@@ -37,13 +36,7 @@ LoggedArxivSearch = create_logged_tool(ArxivQueryRun)
 # Get the selected search tool
 def get_web_search_tool(max_search_results: int):
     if SELECTED_SEARCH_ENGINE == SearchEngine.TAVILY.value:
-        return LoggedTavilySearch(
-            name="web_search",
-            max_results=max_search_results,
-            include_raw_content=True,
-            include_images=True,
-            include_image_descriptions=True,
-        )
+        raise RuntimeError("Tavily search should be called via the async search_tavily or platform-specific wrappers, not get_web_search_tool.")
     elif SELECTED_SEARCH_ENGINE == SearchEngine.DUCKDUCKGO.value:
         return LoggedDuckDuckGoSearch(
             name="web_search",

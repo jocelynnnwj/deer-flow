@@ -11,9 +11,7 @@ from langchain.callbacks.manager import (
 from langchain_community.tools.tavily_search.tool import TavilySearchResults
 from pydantic import Field
 
-from src.tools.tavily_search.tavily_search_api_wrapper import (
-    EnhancedTavilySearchAPIWrapper,
-)
+# TODO: If any usages of EnhancedTavilySearchAPIWrapper remain in this file, migrate to the new async search_tavily or platform-specific wrappers.
 
 
 class TavilySearchResultsWithImages(TavilySearchResults):  # type: ignore[override, override]
@@ -99,7 +97,7 @@ class TavilySearchResultsWithImages(TavilySearchResults):  # type: ignore[overri
     Default is False.
     """
 
-    api_wrapper: EnhancedTavilySearchAPIWrapper = Field(default_factory=EnhancedTavilySearchAPIWrapper)  # type: ignore[arg-type]
+    # api_wrapper: EnhancedTavilySearchAPIWrapper = Field(default_factory=EnhancedTavilySearchAPIWrapper)  # type: ignore[arg-type]
 
     def _run(
         self,

@@ -15,13 +15,19 @@ from langgraph.types import Command, interrupt
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from src.agents import create_agent
-from src.tools.search import LoggedTavilySearch
 from src.tools import (
     crawl_tool,
     get_web_search_tool,
     get_retriever_tool,
     python_repl_tool,
 )
+from src.tools.tavily_search.tavily_search_api_wrapper import (
+    search_linkedin,
+    search_instagram,
+    search_reddit,
+    search_tavily,
+)
+import asyncio
 
 from src.config.agents import AGENT_LLM_MAP
 from src.config.configuration import Configuration
@@ -55,34 +61,38 @@ def handoff_to_planner(
 def background_investigation_node(state: State, config: RunnableConfig):
     logger.info("background investigation node is running.")
     configurable = Configuration.from_runnable_config(config)
-    query = state.get("research_topic")
+    query = state.get("research_topic", "").lower()
     background_investigation_results = None
+
+    # Platform-specific logic
+    if "linkedin" in query:
+        results = asyncio.run(search_linkedin(query))
+        if results:
+            return {"background_investigation_results": results}
+    elif "instagram" in query:
+        results = asyncio.run(search_instagram(query))
+        if results:
+            return {"background_investigation_results": results}
+    elif "reddit" in query:
+        results = asyncio.run(search_reddit(query))
+        if results:
+            return {"background_investigation_results": results}
     if SELECTED_SEARCH_ENGINE == SearchEngine.TAVILY.value:
-        searched_content = LoggedTavilySearch(
-            max_results=configurable.max_search_results
-        ).invoke(query)
-        if isinstance(searched_content, list):
-            background_investigation_results = [
-                f"## {elem['title']}\n\n{elem['content']}" for elem in searched_content
-            ]
-            return {
-                "background_investigation_results": "\n\n".join(
-                    background_investigation_results
-                )
-            }
+        # Use the new async search_tavily for generic queries
+        results = asyncio.run(search_tavily(query, max_results=configurable.max_search_results))
+        if results:
+            return {"background_investigation_results": results}
         else:
-            logger.error(
-                f"Tavily search returned malformed response: {searched_content}"
-            )
+            logger.error(f"Tavily search returned no results for query: {query}")
     else:
         background_investigation_results = get_web_search_tool(
             configurable.max_search_results
         ).invoke(query)
-    return {
-        "background_investigation_results": json.dumps(
-            background_investigation_results, ensure_ascii=False
-        )
-    }
+        return {
+            "background_investigation_results": json.dumps(
+                background_investigation_results, ensure_ascii=False
+            )
+        }
 
 
 def extract_json_from_codeblock(text):
@@ -234,6 +244,9 @@ def planner_node(
             if step.get("step_type") == "image_generation":
                 state["step"] = step
                 break
+        # If no image_generation step found, set the first step as default
+        if "step" not in state and curr_plan.get("steps"):
+            state["step"] = curr_plan["steps"][0]
         # PATCH: If steps include image_generation or speech_generation, force has_enough_context = False
         step_types = [step.get("step_type") for step in curr_plan.get("steps", []) if isinstance(step, dict)]
         need_patch = False
@@ -279,20 +292,25 @@ def planner_node(
         new_plan = Plan.model_validate(curr_plan)
         # TEMP HACK: Add the step as a dict to the messages list for propagation
         step_dict = None
-        if hasattr(state["step"], "__dict__"):
-            step_dict = dict(state["step"].__dict__)
-        elif isinstance(state["step"], dict):
-            step_dict = state["step"]
+        if state.get("step"):
+            if hasattr(state["step"], "__dict__"):
+                step_dict = dict(state["step"].__dict__)
+            elif isinstance(state["step"], dict):
+                step_dict = state["step"]
+            else:
+                step_dict = state["step"]
         else:
-            step_dict = state["step"]
+            step_dict = {}
         update_dict = {
             "messages": [
                 AIMessage(content=full_response, name="planner"),
                 {"role": "system", "content": "__STEP__", "step": step_dict}
             ],
             "current_plan": new_plan,
-            "step": state["step"],
         }
+        # Only add step if it exists
+        if state.get("step"):
+            update_dict["step"] = state["step"]
         logger.info(f"[planner_node] DEBUG: update_dict to return: {update_dict}")
         logger.info(f"[planner_node] END: state keys: {list(state.keys())}, state['step']: {state.get('step', None)}")
         return Command(
@@ -311,20 +329,25 @@ def planner_node(
                 break
         # TEMP HACK: Add the step as a dict to the messages list for propagation
         step_dict = None
-        if hasattr(state["step"], "__dict__"):
-            step_dict = dict(state["step"].__dict__)
-        elif isinstance(state["step"], dict):
-            step_dict = state["step"]
+        if state.get("step"):
+            if hasattr(state["step"], "__dict__"):
+                step_dict = dict(state["step"].__dict__)
+            elif isinstance(state["step"], dict):
+                step_dict = state["step"]
+            else:
+                step_dict = state["step"]
         else:
-            step_dict = state["step"]
+            step_dict = {}
         update_dict = {
             "messages": [
                 AIMessage(content=full_response, name="planner"),
                 {"role": "system", "content": "__STEP__", "step": step_dict}
             ],
             "current_plan": plan_obj,
-            "step": state["step"],
         }
+        # Only add step if it exists
+        if state.get("step"):
+            update_dict["step"] = state["step"]
         logger.info(f"[planner_node] DEBUG: update_dict to return: {update_dict}")
         logger.info(f"[planner_node] END: state keys: {list(state.keys())}, state['step']: {state.get('step', None)}")
         # Route to the correct generator node
@@ -453,20 +476,16 @@ def reporter_node(state: State, config: RunnableConfig):
 
     messages = apply_prompt_template("reporter", state_dict, configurable)
 
-    # if the plan iterations is greater than the max plan iterations, return the reporter node
     if configurable.enable_deep_thinking:
         llm = get_llm_by_type("reasoning")
     else:
         llm = get_llm_by_type(AGENT_LLM_MAP["reporter"])
 
-    # if the plan iterations is greater than the max plan iterations, return the reporter node
     full_response = ""
     response = llm.stream(messages)
     for chunk in response:
-        # Try dict first
         if isinstance(chunk, dict):
             content = chunk.get("content")
-        # Try BaseModel (Pydantic, LangChain, etc.)
         elif hasattr(chunk, "content"):
             content = getattr(chunk, "content")
         else:
@@ -493,8 +512,21 @@ def reporter_node(state: State, config: RunnableConfig):
     if image_markdown:
         full_response = image_markdown + full_response
 
-    logger.info(f"Reporter response: {full_response}")
-    return Command(update={"final_report": full_response})
+    # --- NEW: Prepend Tavily/background investigation results if available ---
+    background_results = state_dict.get("background_investigation_results", "")
+    if background_results:
+        final_report = f"## Tavily Search Results\n\n{background_results}\n\n---\n\n{full_response}"
+    else:
+        final_report = full_response
+
+    logger.info(f"Reporter response: {final_report}")
+    # PATCH: Add final_report as an AIMessage to the messages list
+    ai_message = AIMessage(content=final_report, name="reporter")
+    if "messages" in state and isinstance(state["messages"], list):
+        state["messages"].append(ai_message)
+    else:
+        state["messages"] = [ai_message]
+    return Command(update={"final_report": final_report, "messages": state["messages"]})
     logger.info(f"[reporter_node] END: state keys: {list(state.keys())}, state['step']: {state.get('step', None)}")
 
 

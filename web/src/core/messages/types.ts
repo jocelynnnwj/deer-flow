@@ -13,7 +13,8 @@ export interface Message {
     | "coder"
     | "reporter"
     | "podcast"
-    | "image_generator";
+    | "image_generator"
+    | "speech_generator";
   role: MessageRole;
   isStreaming?: boolean;
   content: string;

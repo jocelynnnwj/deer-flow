@@ -164,22 +164,10 @@ function MessageListItem({
   console.log("[MessageListItem] messageId:", messageId, message);
   console.log("[MessageListItem] message.content:", message.content);
 
-  let parsedContent = null;
-  try {
-    if (typeof message.content === 'string') {
-      // Try to extract JSON substring if message.content contains "Speech generated: ..."
-      const match = message.content.match(/{.*}/s);
-      if (match) {
-        parsedContent = JSON.parse(match[0]);
-      } else if (
-        message.content.trim().startsWith('{') ||
-        message.content.trim().startsWith('[')
-      ) {
-        parsedContent = JSON.parse(message.content);
-      }
-    }
-  } catch (e) {
-    console.warn("Failed to parse message.content", message.content, e);
+  let parsedContent: any = null;
+  // Only try to parse as JSON if the content looks like it might be JSON
+  if (message.content && (message.content.trim().startsWith('{') || message.content.trim().startsWith('['))) {
+    parsedContent = parseJSON(message.content, null);
   }
   console.log("[MessageListItem] parsed content:", parsedContent);
   const researchIds = useStore((state) => state.researchIds);
@@ -250,6 +238,28 @@ function MessageListItem({
                         </audio>
                       </div>
                     );
+                  }
+                  // Speech generator message - extract audio URL from "Speech generated: {json}" format
+                  if (message.agent === "speech_generator" && message.content) {
+                    const speechMatch = message.content.match(/Speech generated: (.+)/);
+                    if (speechMatch) {
+                      try {
+                        const audioData = parseJSON(speechMatch[1], {}) as { url?: string };
+                        if (audioData && audioData.url) {
+                          console.log("Rendering speech generator audio for", audioData.url);
+                          return (
+                            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                              <span style={{ fontWeight: 500, marginBottom: 4 }}>Speech Output:</span>
+                              <audio controls src={audioData.url} style={{ maxWidth: 400 }}>
+                                Your browser does not support the audio element.
+                              </audio>
+                            </div>
+                          );
+                        }
+                      } catch (e) {
+                        console.error("Failed to parse speech generator audio data:", e);
+                      }
+                    }
                   }
                   return (
                     <Markdown
