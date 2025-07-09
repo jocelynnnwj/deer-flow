@@ -278,10 +278,14 @@ def planner_node(
         logger.info(f"PATCHED has_enough_context: {curr_plan['has_enough_context']}, steps: {curr_plan.get('steps')}")
     except json.JSONDecodeError:
         logger.warning(f"Planner response is not a valid JSON: {full_response}")
-        # 返回原始内容，便于前端和调试
+        # Always return a JSON object with an error field
+        error_obj = {
+            "error": "Planner response is not a valid JSON",
+            "raw_response": full_response
+        }
         return Command(
             update={
-                "messages": [AIMessage(content=full_response, name="planner")],
+                "messages": [AIMessage(content=json.dumps(error_obj), name="planner")],
                 "planner_error": "Planner response is not a valid JSON",
                 "planner_raw_response": full_response,
             },
