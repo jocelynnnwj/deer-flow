@@ -125,6 +125,17 @@ You're all set! Open your web browser and navigate to `http://localhost:3000`. Y
 
 ---
 
+## 🌐 Platform Extension Support
+
+DeerFlow now supports multi-platform search and research via Tavily, including:
+- **Twitter/X, LinkedIn, Instagram, Reddit, and Web Search**
+- Results include rich metadata (author, timestamp, source, images)
+- Images and links are preserved and rendered in the UI
+- Custom frontend cards for each result, with prominent display of author, time, and preview images
+- See [`docs/Platform-Support.md`](docs/Platform-Support.md) for full details and UX examples
+
+---
+
 ## 3. How It Works
 - The backend runs at `http://localhost:8000` (FastAPI).
 - The frontend runs at `http://localhost:3000` (Next.js).
