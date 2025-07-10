@@ -3,8 +3,7 @@ import mimetypes
 import os
 import re
 import struct
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 
 def save_binary_file(file_name, data):
     with open(file_name, "wb") as f:

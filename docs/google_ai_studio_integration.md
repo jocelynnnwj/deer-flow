@@ -39,13 +39,14 @@ Set your Google AI Studio API key in one of the following ways:
 
 #### Option A: Environment Variable
 ```bash
-export GOOGLE_AI_STUDIO_API_KEY="your_api_key_here"
+export GEMINI_API_KEY="your_api_key_here"
 ```
 
 #### Option B: Configuration File
 Add to your `conf.yaml`:
 ```yaml
-GOOGLE_AI_STUDIO:
+GEMINI_MODEL:
+  model: "gemini-1.5-pro"
   api_key: "your_api_key_here"
 ```
 
@@ -224,7 +225,7 @@ Both agents include comprehensive error handling:
 
 ### Common Issues
 
-1. **API Key Not Found**: Ensure `GOOGLE_AI_STUDIO_API_KEY` is set correctly
+1. **API Key Not Found**: Ensure `GEMINI_API_KEY` is set correctly
 2. **Import Errors**: Verify all dependencies are installed
 3. **Model Access**: Ensure your Google AI Studio account has access to Imagen-3 and Gemini TTS
 4. **Rate Limits**: Check Google AI Studio usage limits

@@ -18,8 +18,9 @@ Before you begin, ensure you have the following installed and configured on your
     *   Python 3.11+
     *   We recommend using `uv` for Python package management. If you don't have it, you can install it with `pip install uv`.
 *   **API Keys**: The application relies on external services for its core functionality.
-    *   **Google Gemini API Key**: Powers the language model agents (text, image, and TTS). You can get your key from [Google AI Studio](https://makersuite.google.com/app/apikey). **You must enable both Gemini Pro (text), Gemini Pro Vision (image), and Gemini TTS in your Google AI Studio project.**
+    *   **Google AI Studio API Key**: Powers all Google services (text generation, image generation, and TTS). You can get your key from [Google AI Studio](https://aistudio.google.com/). **Note: Image generation requires special access to Imagen models in your Google AI Studio project.**
     *   **Tavily API Key**: Powers the web search tool. You can get your key from the [Tavily website](https://app.tavily.com/).
+    *   **Environment Variables**: Optional - the application can also read API keys from environment variables as a fallback.
 
 ## Getting Started: A Step-by-Step Guide
 
@@ -35,17 +36,17 @@ cd deer-flow
 
 ### Step 2: Configure API Keys
 
-The application requires two API keys to function correctly.
+The application requires two API keys to function correctly. Both are configured in the `conf.yaml` file.
 
-#### A. Configure the Gemini API Key
+#### A. Configure the Google AI Studio API Key
 
-The Gemini API key is managed through a central configuration file.
+The Google AI Studio API key is managed through a central configuration file and powers all Google services (text generation, image generation, and TTS).
 
 1.  **Create the configuration file**: In the root directory of the project, make a copy of the example file and name it `conf.yaml`:
     ```bash
     cp conf.yaml.example conf.yaml
     ```
-2.  **Add your Gemini key**: Open the `conf.yaml` file with a text editor and add your API key in the `GEMINI_MODEL` section.
+2.  **Add your Google AI Studio key**: Open the `conf.yaml` file with a text editor and add your API key in the `GEMINI_MODEL` section.
 
     ```yaml
     # conf.yaml
@@ -54,23 +55,22 @@ The Gemini API key is managed through a central configuration file.
 
     GEMINI_MODEL:
       model: "gemini-1.5-pro"
-      # Replace the placeholder with your actual Google Gemini API key
-      api_key: "YOUR_GEMINI_API_KEY"
+      # Replace the placeholder with your actual Google AI Studio API key
+      api_key: "YOUR_GOOGLE_AI_STUDIO_API_KEY"
     ```
 
 #### B. Configure the Tavily API Key
 
-The Tavily API key for the search tool is managed using an environment variable.
+The Tavily API key for the search tool is managed in the configuration file.
 
-1.  **Create an environment file**: In the project's root directory, create a file named `.env`:
-    ```bash
-    touch .env
-    ```
-2.  **Add your Tavily key**: Open the `.env` file and add your key as shown below. This file is listed in `.gitignore`, so your key will not be committed to your repository.
+1.  **Update the configuration**: Open the `conf.yaml` file and update the Tavily API key in the `TOOLS` section:
 
-    ```
-    # .env
-    TAVILY_API_KEY="YOUR_TAVILY_API_KEY"
+    ```yaml
+    # conf.yaml
+    TOOLS:
+      search:
+        enabled: true
+        tavily_api_key: "YOUR_TAVILY_API_KEY"  # Replace with your actual Tavily API key
     ```
 
 ### Step 3: Install All Dependencies
@@ -118,10 +118,10 @@ You're all set! Open your web browser and navigate to `http://localhost:3000`. Y
 ---
 
 ## 🚀 Features
-- **Google Gemini LLM Integration**: Use Gemini for chat, research, and tool-calling workflows.
+- **Google AI Studio Integration**: Use Google AI Studio for chat, research, image generation, and TTS workflows.
 - **Web UI**: Modern Next.js frontend, accessible at `http://localhost:3000`.
-- **Multi-Agent System**: Configure which agents use Gemini or other LLMs.
-- **Tool Calling**: Gemini can invoke tools and plugins as part of its workflow.
+- **Multi-Agent System**: Configure which agents use Google AI Studio or other LLMs.
+- **Tool Calling**: Google AI Studio can invoke tools and plugins as part of its workflow.
 
 ---
 
@@ -151,8 +151,8 @@ DeerFlow now supports multi-platform search and research via Tavily, including:
 - **Planner**: Breaks down user requests into actionable steps (research, image, or speech generation).
 - **Researcher**: Gathers information using web search and retrieval tools.
 - **Coder**: Executes code and data processing steps.
-- **Image Generator**: Uses Gemini to generate images from prompts.
-- **Speech Generator**: Uses Gemini TTS to generate speech/audio from text.
+- **Image Generator**: Uses Google AI Studio to generate images from prompts.
+- **Speech Generator**: Uses Google AI Studio TTS to generate speech/audio from text.
 - **Reporter**: Compiles and presents the final report.
 - **Human Feedback**: Allows user review and acceptance of plans.
 
@@ -160,8 +160,8 @@ DeerFlow now supports multi-platform search and research via Tavily, including:
 - **Web Search**: Uses Tavily API to retrieve web results.
 - **Crawl**: Extracts readable content from URLs.
 - **Python REPL**: Executes Python code for data analysis.
-- **Gemini Image Tool**: Generates images from text prompts.
-- **Gemini TTS Tool**: Generates speech audio from text.
+- **Google AI Studio Image Tool**: Generates images from text prompts.
+- **Google AI Studio TTS Tool**: Generates speech audio from text.
 
 ### Tavily Twitter/X Search Tool
 
@@ -176,7 +176,7 @@ print(result)
 ```
 
 - This function returns clean, relevant text content from Twitter/X using Tavily.
-- The Tavily API key must be set in your environment as `TAVILY_API_KEY` (see setup instructions above).
+- The Tavily API key is loaded from `conf.yaml` (see setup instructions above).
 - To search other platforms (e.g., Reddit), adapt the function to use `include_domains=["reddit.com"]`.
 - For general web search, use the Tavily wrapper without the domain filter.
 
@@ -218,14 +218,16 @@ print(result)
 
 ## 4. Troubleshooting
 - **Web UI 500 error**: Make sure the backend is running (`uv run server.py --reload`).
-- **Gemini not responding**: Check your API key in `conf.yaml` and network connectivity.
-- **Agent not using Gemini**: Ensure `AGENT_LLM_MAP` is set to `"gemini"` for the desired agent.
+- **Google AI Studio not responding**: Check your API key in `conf.yaml` and network connectivity.
+- **Image generation failing**: Ensure your Google AI Studio API key has access to Imagen models (requires special access).
+- **Agent not using Google AI Studio**: Ensure `AGENT_LLM_MAP` is set to `"google_genai"` for the desired agent.
 
 ---
 
 ## 5. Advanced
 - You can mix and match LLMs for different agents by editing `AGENT_LLM_MAP`.
 - All configuration is managed in `conf.yaml` for consistency.
+- **Single API Key**: All Google services (text, image, TTS) use the same Google AI Studio API key for simplicity.
 
 ---
 

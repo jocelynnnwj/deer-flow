@@ -14,6 +14,7 @@ from fastapi.responses import Response, StreamingResponse
 from langchain_core.messages import AIMessageChunk, ToolMessage, BaseMessage, AIMessage
 from langgraph.types import Command
 from fastapi.staticfiles import StaticFiles
+from langchain_core.runnables import RunnableConfig
 
 from src.config.report_style import ReportStyle
 from src.config.tools import SELECTED_RAG_PROVIDER
@@ -42,6 +43,7 @@ from src.server.rag_request import (
 from src.server.config_request import ConfigResponse
 from src.llms.llm import get_configured_llm_models
 from src.tools import VolcengineTTS
+from src.tools.google_genai_image import generate_image_tool
 
 logger = logging.getLogger(__name__)
 
@@ -77,17 +79,17 @@ async def chat_stream(request: ChatRequest):
     return StreamingResponse(
         _astream_workflow_generator(
             request.model_dump()["messages"],
-            thread_id,
-            request.resources,
-            request.max_plan_iterations,
-            request.max_step_num,
-            request.max_search_results,
-            request.auto_accepted_plan,
-            request.interrupt_feedback,
-            request.mcp_settings,
-            request.enable_background_investigation,
-            request.report_style,
-            request.enable_deep_thinking,
+            thread_id or "default_thread_id",
+            request.resources or [],
+            request.max_plan_iterations or 1,
+            request.max_step_num or 10,
+            request.max_search_results or 5,
+            request.auto_accepted_plan if request.auto_accepted_plan is not None else False,
+            request.interrupt_feedback or "",
+            request.mcp_settings or {},
+            request.enable_background_investigation if request.enable_background_investigation is not None else False,
+            request.report_style if request.report_style else ReportStyle.ACADEMIC,
+            request.enable_deep_thinking if request.enable_deep_thinking is not None else False,
         ),
         media_type="text/event-stream",
     )
@@ -125,7 +127,7 @@ async def _astream_workflow_generator(
         input_ = Command(resume=resume_msg)
     async for agent, _, event_data in graph.astream(
         input_,
-        config={
+        config=cast(RunnableConfig, {
             "thread_id": thread_id,
             "resources": resources,
             "max_plan_iterations": max_plan_iterations,
@@ -134,7 +136,7 @@ async def _astream_workflow_generator(
             "mcp_settings": mcp_settings,
             "report_style": report_style.value,
             "enable_deep_thinking": enable_deep_thinking,
-        },
+        }),
         stream_mode=["messages", "updates"],
         subgraphs=True,
     ):
@@ -160,9 +162,18 @@ async def _astream_workflow_generator(
         message_chunk, message_metadata = cast(
             tuple[BaseMessage, dict[str, any]], event_data
         )
+        # Safely extract agent name with error handling
+        agent_name = "unknown"
+        try:
+            if agent and len(agent) > 0:
+                agent_name = agent[0].split(":")[0]
+        except (IndexError, AttributeError, TypeError) as e:
+            print(f"[DeerFlow DEBUG] Error extracting agent name: {e}, agent: {agent}")
+            agent_name = "unknown"
+        
         event_stream_message: dict[str, any] = {
             "thread_id": thread_id,
-            "agent": agent[0].split(":")[0],
+            "agent": agent_name,
             "id": message_chunk.id,
             "role": "assistant",
             "content": message_chunk.content,
@@ -241,13 +252,13 @@ async def text_to_speech(request: TTSRequest):
         # Call the TTS API
         result = tts_client.text_to_speech(
             text=request.text[:1024],
-            encoding=request.encoding,
-            speed_ratio=request.speed_ratio,
-            volume_ratio=request.volume_ratio,
-            pitch_ratio=request.pitch_ratio,
-            text_type=request.text_type,
-            with_frontend=request.with_frontend,
-            frontend_type=request.frontend_type,
+            encoding=request.encoding or "mp3",
+            speed_ratio=request.speed_ratio if request.speed_ratio is not None else 1.0,
+            volume_ratio=request.volume_ratio if request.volume_ratio is not None else 1.0,
+            pitch_ratio=request.pitch_ratio if request.pitch_ratio is not None else 0.0,
+            text_type=request.text_type or "text",
+            with_frontend=request.with_frontend if request.with_frontend is not None else 0,
+            frontend_type=request.frontend_type or "default",
         )
 
         if not result["success"]:
@@ -442,43 +453,27 @@ async def generate_image(
     style: str = None,
     quality: str = "standard",
 ):
-    """Generate an image using Google AI Studio Imagen-3."""
+    """Generate an image using Google Gemini image model."""
     try:
         logger.info(f"Generating image with prompt: {prompt[:100]}...")
-        
-        # Call the image generation tool
-        result = generate_image_tool.invoke({
-            "prompt": prompt,
-            "aspect_ratio": aspect_ratio,
-            "size": size,
-            "style": style,
-            "quality": quality
-        })
-        
-        # Parse the result
+        # Call the image generation tool with all parameters
+        result = generate_image_tool(prompt, aspect_ratio, size, style or "", quality)
         result_data = json.loads(result)
-        
-        if not result_data.get("success"):
-            raise HTTPException(status_code=500, detail=str(result_data.get("error", "Image generation failed")))
-        
-        # Decode the base64 image data
-        image_data = base64.b64decode(result_data["image_data"])
-        
-        # Determine content type from mime_type
-        content_type = result_data.get("mime_type", "image/png")
-        
-        # Return the image file
-        return Response(
-            content=image_data,
-            media_type=content_type,
-            headers={
-                "Content-Disposition": f"attachment; filename=generated_image.{content_type.split('/')[-1]}"
-            },
-        )
-        
+        if result_data.get("type") == "image" and "url" in result_data:
+            return {
+                "success": True,
+                "url": result_data["url"],
+                "prompt": result_data.get("prompt"),
+                "aspect_ratio": result_data.get("aspect_ratio"),
+                "size": result_data.get("size"),
+                "style": result_data.get("style"),
+                "quality": result_data.get("quality"),
+            }
+        else:
+            return {"success": False, "error": result_data.get("error", "Image generation failed.")}
     except Exception as e:
         logger.exception(f"Error in image generation endpoint: {str(e)}")
-        raise HTTPException(status_code=500, detail=INTERNAL_SERVER_ERROR_DETAIL)
+        return {"success": False, "error": str(e)}
 
 
 @app.post("/api/speech/generate")

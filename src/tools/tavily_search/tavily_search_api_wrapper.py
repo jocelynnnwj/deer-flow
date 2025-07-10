@@ -8,9 +8,25 @@ import json
 import re
 from datetime import datetime
 import logging
+from pathlib import Path
 logger = logging.getLogger(__name__)
 
-TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+# Load API key from conf.yaml or environment
+def get_tavily_api_key():
+    # Try to load from conf.yaml first
+    try:
+        from src.config import load_yaml_config
+        config_path = str((Path(__file__).parent.parent.parent.parent / "conf.yaml").resolve())
+        config = load_yaml_config(config_path)
+        if "TOOLS" in config and "search" in config["TOOLS"] and "tavily_api_key" in config["TOOLS"]["search"]:
+            return config["TOOLS"]["search"]["tavily_api_key"]
+    except Exception as e:
+        logger.warning(f"Could not load Tavily API key from conf.yaml: {e}")
+    
+    # Fallback to environment variable
+    return os.getenv("TAVILY_API_KEY")
+
+TAVILY_API_KEY = get_tavily_api_key() or ""
 
 PLATFORM_EMOJIS = {
     "twitter.com": "🐦",
@@ -49,7 +65,10 @@ def dedup_results(results):
         deduped.append(r)
     return deduped
 
-async def search_tavily(query: str, max_results: int = 5, domain: str = None):
+async def search_tavily(query: str, max_results: int = 5, domain: str | None = None):
+    if not TAVILY_API_KEY:
+        return "Error: Tavily API key not found in conf.yaml or environment variables"
+    
     url = "https://api.tavily.com/search"
     headers = {"Authorization": f"Bearer {TAVILY_API_KEY}"}
     params = {

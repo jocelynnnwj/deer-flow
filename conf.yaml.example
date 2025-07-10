@@ -22,22 +22,17 @@ BASIC_MODEL:
 #   model: "doubao-1-5-thinking-pro-m-250428"
 #   api_key: xxxx
 
-# Gemini model configuration
-# Uncomment and configure the following settings to use Gemini models
+# Google AI Studio model configuration
+# This API key powers all Google services (text generation, image generation, and TTS)
 GEMINI_MODEL:
   model: "gemini-1.5-pro"
-  api_key: "YOUR_GEMINI_API_KEY"  # Replace with your actual Gemini API key
-
-# Google AI Studio configuration for image and speech generation
-# Uncomment and configure the following settings to use Google AI Studio
-GOOGLE_AI_STUDIO:
   api_key: "YOUR_GOOGLE_AI_STUDIO_API_KEY"  # Replace with your actual Google AI Studio API key
 
 # Tool Configuration
 TOOLS:
   search:
     enabled: true
-    tavily_api_key: "YOUR_TAVILY_API_KEY"
+    tavily_api_key: "YOUR_TAVILY_API_KEY"  # Replace with your actual Tavily API key
   crawl:
     enabled: true
   python_repl:

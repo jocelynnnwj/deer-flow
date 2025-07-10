@@ -1,8 +1,7 @@
 import os
 import mimetypes
 import struct
-from google import genai
-from google.genai import types
+import google.generativeai as genai
 from langchain_core.tools import tool
 import json
 import uuid
@@ -53,45 +52,55 @@ def generate_speech_tool(text: str) -> str:
     """
     Generate speech audio using Google Gemini TTS and return a JSON string with the audio URL.
     """
-    client = genai.Client(api_key=os.environ.get("GEMINI_API_KEY"))
-    model = "gemini-2.5-pro-preview-tts"
-    contents = [
-        types.Content(
-            role="user",
-            parts=[types.Part.from_text(text=text)],
-        ),
-    ]
-    generate_content_config = types.GenerateContentConfig(
-        temperature=1,
-        response_modalities=["audio"],
-    )
-    file_index = 0
-    file_path = None
-    for chunk in client.models.generate_content_stream(
-        model=model,
-        contents=contents,
-        config=generate_content_config,
-    ):
-        if (
-            chunk.candidates is None
-            or chunk.candidates[0].content is None
-            or chunk.candidates[0].content.parts is None
-        ):
-            continue
-        part = chunk.candidates[0].content.parts[0]
-        if hasattr(part, 'inline_data') and part.inline_data and part.inline_data.data:
-            # Save to web/public/static/ directory
-            public_dir = os.path.join("web", "public", "static")
-            os.makedirs(public_dir, exist_ok=True)
-            file_name = f"genai_tts_{uuid.uuid4().hex}.wav"
-            file_path = os.path.join(public_dir, file_name)
-            inline_data = part.inline_data
-            data_buffer = convert_to_wav(inline_data.data, inline_data.mime_type)
-            with open(file_path, "wb") as f:
-                f.write(data_buffer)
-            break
-    if file_path:
-        url = f"/static/{os.path.basename(file_path)}"
-        return json.dumps({"type": "audio", "url": url})
+    # Configure the API
+    from src.config import load_yaml_config
+    from pathlib import Path
+    
+    # Load configuration from conf.yaml
+    config_path = str((Path(__file__).parent.parent.parent / "conf.yaml").resolve())
+    config = load_yaml_config(config_path)
+    
+    # Try to get API key from GEMINI_MODEL
+    api_key = None
+    if "GEMINI_MODEL" in config and "api_key" in config["GEMINI_MODEL"]:
+        api_key = config["GEMINI_MODEL"]["api_key"]
     else:
-        return json.dumps({"error": "No audio generated."}) 
+        # Fallback to environment variable
+        api_key = os.environ.get("GEMINI_API_KEY")
+    
+    if not api_key:
+        return json.dumps({"error": "GEMINI_API_KEY not found in conf.yaml or environment variables"})
+    
+    genai.configure(api_key=api_key)
+    
+    try:
+        # Use the TTS model
+        model = genai.GenerativeModel('gemini-2.0-flash-exp')
+        
+        # Generate the speech
+        response = model.generate_content(text)
+        
+        # Check if we got audio data
+        if response.candidates and response.candidates[0].content:
+            for part in response.candidates[0].content.parts:
+                if hasattr(part, 'inline_data') and part.inline_data:
+                    # Save to web/public/static/ directory
+                    public_dir = os.path.join("web", "public", "static")
+                    os.makedirs(public_dir, exist_ok=True)
+                    file_name = f"genai_tts_{uuid.uuid4().hex}.wav"
+                    file_path = os.path.join(public_dir, file_name)
+                    
+                    # Convert to WAV format
+                    data_buffer = convert_to_wav(part.inline_data.data, part.inline_data.mime_type)
+                    
+                    with open(file_path, "wb") as f:
+                        f.write(data_buffer)
+                    
+                    # Return the public URL
+                    url = f"/static/{os.path.basename(file_path)}"
+                    return json.dumps({"type": "audio", "url": url})
+        
+        return json.dumps({"error": "No audio generated."})
+        
+    except Exception as e:
+        return json.dumps({"error": f"Speech generation failed: {str(e)}"}) 
